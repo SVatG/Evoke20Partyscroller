@@ -66,7 +66,7 @@ void fullscreenQuad(C3D_Tex texture, float iod, float iodmult) {
 
     // Compute the projection matrix
     // Note: we're setting top to 240 here so origin is at top left.
-    Mtx_OrthoTilt(&projection, 0.0, 400.0, 240.0, 0.0, 0.0, 1.0);
+    Mtx_OrthoTilt(&projection, 0.0, 400.0, 240.0, 0.0, 0.0, 1.0, true);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLocProjectionFlat, &projection);
     
     C3D_TexSetFilter(&texture, GPU_LINEAR, GPU_NEAREST);

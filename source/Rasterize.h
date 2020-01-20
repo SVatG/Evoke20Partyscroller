@@ -4,6 +4,8 @@
 #include "VectorLibrary/Vector.h"
 #include "VectorLibrary/Matrix.h"
 
+#include <stdint.h>
+
 typedef struct {
     int32_t v[4];
 } index_triangle_t;

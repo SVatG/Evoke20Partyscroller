@@ -7,9 +7,10 @@
 #include <math.h>
 
 #include "Tools.h"
-#include "vshader_shbin.h"
+#include <vshader_shbin.h>
 #include "tunnel_bin.h"
 #include "tunnel_logo_bin.h"
+#include "gridbg_bin.h"
 #include "Perlin.h"
 
 #include "Lighthouse.h"
@@ -24,11 +25,12 @@ static C3D_Mtx projection;
 
 static C3D_Tex sphere_tex;
 static C3D_Tex logo_tex;
+static C3D_Tex bg_tex;
 
 int32_t vertCount;
 static vertex* vboVerts;
 
-#define SEGMENTS 20
+#define SEGMENTS 15
 
 // Ohne tunnel geht eben nicht
 void effectTunnelInit() {
@@ -38,6 +40,7 @@ void effectTunnelInit() {
     shaderProgramSetVsh(&program, &vshader_dvlb->DVLE[0]);
 
     C3D_TexInit(&sphere_tex, 256, 256, GPU_RGBA8);
+    C3D_TexInit(&bg_tex, SCREEN_TEXTURE_HEIGHT, SCREEN_TEXTURE_WIDTH, GPU_RGBA8);
     C3D_TexInit(&logo_tex, SCREEN_TEXTURE_HEIGHT, SCREEN_TEXTURE_WIDTH, GPU_RGBA8);
     
     vboVerts = (vertex*)linearAlloc(sizeof(vertex) * NORDLICHT_MAX_VERTS);
@@ -48,13 +51,17 @@ void effectTunnelInit() {
     
     C3D_TexUpload(&logo_tex, tunnel_logo_bin);
     C3D_TexSetFilter(&logo_tex, GPU_LINEAR, GPU_NEAREST);
+    
+    C3D_TexUpload(&bg_tex, gridbg_bin);
+    C3D_TexSetFilter(&bg_tex, GPU_LINEAR, GPU_NEAREST);
 }
 
 void effectTunnelUpdate(float time, float escalate) {
-    int depth = 50;
-    float zscale = 0.2;
-    float rscale = 1.8;
-    float rscale_inner = 1.3;
+    int depth = 30;
+    float zscale = 0.3;
+    float rscale = 1.9;
+    float rscale_inner = 1.1;
+    float display_factor = 0.0;    
     
     vertCount = 0;
     vec3_t ringPos[SEGMENTS];
@@ -63,31 +70,47 @@ void effectTunnelUpdate(float time, float escalate) {
     vec3_t ringPosInner[SEGMENTS];
     vec3_t ringPosPrevInner[SEGMENTS];
     
-    float distance = -time * 0.01;
+    float distance = -time * 0.03;
     float offset = fmod(distance, 1.0);
     // printf("%f %f\n", distance, offset);
     
     for(int z = depth - 1; z >= 0; z--) {
         float zo = z + offset;
-        float xo = sin(zo * 0.05) * (zo / 10.0);
-        float yo = cos(zo * 0.05) * (zo / 10.0);
+        float xo = sin(zo * 0.2) * (zo / 10.0) * cos(time * 0.01);
+        float yo = cos(zo * 0.2) * (zo / 10.0) * sin(time * 0.01);
         
         for(int s = 0; s < SEGMENTS; s++) {
-            float rn = 0.9 + noise_at(z - distance + offset, s, 0.5) / 4.0;
+            float rn = 0.9;
             float sf = (((float)s) / (float)SEGMENTS) * 2.0 * 3.1415;
             ringPos[s] = vec3((sin(sf) * rscale + xo) * rn, (cos(sf) * rscale + yo) * rn, -zo * zscale);
-            ringPosInner[s] = vec3((sin(sf) * rscale_inner + xo) * rn, (cos(sf) * rscale_inner + yo) * rn, -zo * zscale);
+            ringPosInner[s] = vec3(
+                (sin(sf + time * 0.01) * rscale_inner + xo) * rn, 
+                (cos(sf + time * 0.01) * rscale_inner + yo) * rn, 
+                -zo * zscale
+            );
             
         }
         
         if(z != depth - 1) {
             for(int s = 0; s < SEGMENTS; s++) {
                 int sn = (s + 1) % SEGMENTS;
-                vertCount += buildQuad(&(vboVerts[vertCount]), ringPosPrev[s], ringPos[s], ringPos[sn], ringPosPrev[sn], 
-                                    vec2(0.5, 0.5), vec2(1, 0.5), vec2(0.5, 1), vec2(1, 1));
+                float tv = ((int)(time * 0.01) % 10) / 20.0;
+                float nv = noise_at(z - distance + offset + tv, s, 0.5);
+                float nv2 = noise_at(z - distance + offset + tv, s, 0.1);
+                float shift = 0.0;
+                if(nv2 > 0.15) {
+                    shift = 0.5;
+                }
                 
-                vertCount += buildQuad(&(vboVerts[vertCount]), ringPosPrevInner[s], ringPosInner[s], ringPosInner[sn], ringPosPrevInner[sn], 
-                                    vec2(0.0, 0.0), vec2(0.5, 0.0), vec2(0.0, 0.5), vec2(0.5, 0.5));
+                if(nv > 0.15 - display_factor) {
+                    vertCount += buildQuad(&(vboVerts[vertCount]), ringPosPrev[s], ringPos[s], ringPos[sn], ringPosPrev[sn], 
+                                        vec2(0.5, 0.5 - shift), vec2(1, 0.5 - shift), vec2(0.5, 1 - shift), vec2(1, 1 - shift));
+                }
+                
+                if(nv < -0.15 + display_factor) {
+                    vertCount += buildQuad(&(vboVerts[vertCount]), ringPosPrevInner[s], ringPosInner[s], ringPosInner[sn], ringPosPrevInner[sn], 
+                                        vec2(0.0, 0.0 + shift), vec2(0.5, 0.0 + shift), vec2(0.0, 0.5 + shift), vec2(0.5, 0.5 + shift));
+                }
             }
         }
         
@@ -114,20 +137,15 @@ void effectTunnelDraw(float iod, float time, float escalate) {
     AttrInfo_AddLoader(attrInfo, 2, GPU_FLOAT, 3); // v2=normal
 
     // Compute the projection matrix
-    Mtx_PerspStereoTilt(&projection, 65.0f*M_PI/180.0f, 400.0f/240.0f, 0.01f, 1000.0f, iod, 2.0f);
+    Mtx_PerspStereoTilt(&projection, 65.0f*M_PI/180.0f, 400.0f/240.0f, 0.01f, 1000.0f, iod, 2.0f, false);
 
-    // Load the texture and bind it to the first texture unit
-    C3D_TexUpload(&sphere_tex, tunnel_bin);
-    C3D_TexSetFilter(&sphere_tex, GPU_LINEAR, GPU_NEAREST);
+    // Bind texture to the first texture unit
     C3D_TexBind(0, &sphere_tex);
     
     // Calculate the modelView matrix
     C3D_Mtx modelView;
     Mtx_Identity(&modelView);
-    Mtx_Translate(&modelView, 0.0, 0.0, 0.0);
-//     Mtx_RotateX(&modelView,  0.5, true);
-//     Mtx_RotateZ(&modelView, -0.3, true);
-    //Mtx_RotateY(&modelView, time * 0.002, true);
+    Mtx_Translate(&modelView, 0.0, 0.0, 0.0, false);
     
     // Update the uniforms
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projection);
@@ -163,10 +181,15 @@ void effectTunnelDraw(float iod, float time, float escalate) {
 }
 
 void effectTunnelRender(C3D_RenderTarget* targetLeft, C3D_RenderTarget* targetRight, float iod, float time, float escalate) {
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+        
     effectTunnelUpdate(time, escalate);
-    
+
     // Left eye
     C3D_FrameDrawOn(targetLeft);
+    
+    // Background
+    fullscreenQuad(bg_tex, -iod, 1.0 / 10.0);
     
     // Actual scene
     effectTunnelDraw(-iod, time, escalate);
@@ -180,6 +203,9 @@ void effectTunnelRender(C3D_RenderTarget* targetLeft, C3D_RenderTarget* targetRi
         // Right eye
         C3D_FrameDrawOn(targetRight);
     
+        // Background
+        fullscreenQuad(bg_tex, iod, 1.0 / 10.0);
+        
         // Actual scene
         effectTunnelDraw(iod, time, escalate);
         
@@ -188,6 +214,8 @@ void effectTunnelRender(C3D_RenderTarget* targetLeft, C3D_RenderTarget* targetRi
         
         fade();
     }
+    
+    C3D_FrameEnd(0);
 }
 
 void effectTunnelExit() {

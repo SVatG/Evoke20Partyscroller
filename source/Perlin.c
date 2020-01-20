@@ -1,6 +1,7 @@
 // Pretty noise.
 // (Perlin/Fractal noise)
 #include <math.h>
+#include <stdint.h>
 
 #define fade(t) ((t) * (t) * (t) * ((t) * ((t) * 6 - 15) + 10))
 #define lerp(t,a,b) ((a) + (t) * ((b) - (a)))

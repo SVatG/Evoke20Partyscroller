@@ -27,11 +27,12 @@ LD := $(CC)
 # Tool flags
 ARCH := -g -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -mword-relocations
 CFLAGS := -Wall -Wno-missing-braces -O3 \
+          -std=c99 \
 	  -fomit-frame-pointer -ffunction-sections \
 	  -mfloat-abi=hard -ffast-math \
 	  $(ARCH) -DARM11 -D_3DS \
 	  -DABGR32Pixels \
-	  $(foreach dir,$(LIBDIRS),-I$(dir)/include) 
+	  $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(BUILD)
 ASFLAGS := 
 LDFLAGS := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
 	   $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
